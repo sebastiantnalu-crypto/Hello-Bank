@@ -259,111 +259,17 @@ hello-bank/
 
 Before writing any code, install all required tools. Open **PowerShell as Administrator** and run:
 
-```bat
-# scripts/install-tools.bat
-
-@echo off
-echo Installing Chocolatey...
-powershell -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))"
-
-echo Installing cloud tools...
-choco install terraform -y
-choco install kubernetes-cli -y
-choco install kubernetes-helm -y
-choco install awscli -y
-choco install git -y
-
-echo Done! Restart your terminal.
-pause
-```
-
-Verify everything installed:
-
-```powershell
-terraform --version    # should show v1.x.x
-kubectl version        # should show Client Version
-helm version           # should show v3.x.x
-aws --version          # should show aws-cli/2.x.x
-```
-
-Configure your AWS credentials (get these from AWS Console → IAM → Your User → Security Credentials):
-
-```powershell
 aws configure
 # AWS Access Key ID:     AKIA...
 # AWS Secret Access Key: xxxx...
 # Default region:        eu-west-1
 # Default output format: json
-```
-
-**Why eu-west-1 (Ireland)?** It is one of the oldest AWS regions, has all services available, and free tier applies globally regardless of region.
-
----
 
 ### Step 1 — The Application (`app/`)
 
 The app is a minimal Python FastAPI web server. It has two endpoints that simulate a banking API:
 
-```python
-# app/main.py
-
-from fastapi import FastAPI
-
-app = FastAPI(title="Hello Bank")
-
-# Simple in-memory accounts — later replaced by RDS PostgreSQL
-accounts = {"ACC001": 1000.00, "ACC002": 500.00}
-
-@app.get("/")
-def home():
-    return {"message": "Hello Bank is running!"}
-
-@app.get("/balance/{account_id}")
-def get_balance(account_id: str):
-    balance = accounts.get(account_id)
-    if balance is None:
-        return {"error": "Account not found"}
-    return {"account": account_id, "balance": balance}
-
-@app.post("/transfer")
-def transfer(from_acc: str, to_acc: str, amount: float):
-    if accounts.get(from_acc, 0) < amount:
-        return {"error": "Insufficient funds"}
-    accounts[from_acc] -= amount
-    accounts[to_acc] = accounts.get(to_acc, 0) + amount
-    return {"status": "done", "from": from_acc, "to": to_acc, "amount": amount}
-```
-
 The Dockerfile packages this app so Kubernetes can run it:
-
-```dockerfile
-# app/Dockerfile
-
-FROM python:3.11-slim
-
-# Create non-root user — required by Kyverno policy
-RUN useradd -m appuser
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY main.py .
-
-# Switch to non-root before starting (Kyverno will block root containers)
-USER appuser
-
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
-```
-
-Test locally before deploying:
-
-```powershell
-cd app
-pip install fastapi uvicorn
-uvicorn main:app --reload
-# Open browser: http://localhost:8000/balance/ACC001
-```
 
 ---
 
@@ -414,7 +320,7 @@ s3_bucket_name  = "hello-bank-logs-xxxx"
 **Key concept — why modules?** Each folder under `modules/` is self-contained. If you need to change the database, you only touch `modules/rds/`. Nothing else breaks.
 
 **Free tier note:** The following instance types are free for 12 months on a new AWS account:
-- EC2: `t2.micro` (750 hours/month)
+- EC2: `t3.micro` (750 hours/month)
 - RDS: `db.t3.micro` (750 hours/month, 20GB storage)
 - S3: 5GB storage free
 
@@ -502,45 +408,6 @@ Stage 2: build   → builds Docker image, pushes to GitLab registry
 Stage 3: deploy  → runs helm upgrade on your EKS cluster
 ```
 
-```yaml
-# .gitlab-ci.yml
-
-stages:
-  - test
-  - build
-  - deploy
-
-test-app:
-  stage: test
-  image: python:3.11-slim
-  script:
-    - pip install fastapi uvicorn pytest
-    - python -c "from main import app; print('Import OK')"
-
-build-image:
-  stage: build
-  image: docker:24
-  services:
-    - docker:24-dind
-  script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA ./app
-    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-  only:
-    - main
-
-deploy-staging:
-  stage: deploy
-  image: alpine/helm:3.14.0
-  script:
-    - helm upgrade --install hello-bank ./kubernetes/helm/hello-bank-app
-        --set image.tag=$CI_COMMIT_SHA
-        --namespace hello-bank
-  only:
-    - main
-  when: manual
-```
-
 **Push your first change and watch the pipeline:**
 
 ```powershell
@@ -560,36 +427,12 @@ git push origin main
 
 The CloudWatch alarm is part of Terraform — it is created automatically with `terraform apply`:
 
-```hcl
-# monitoring/cloudwatch-alarm.tf
-
-resource "aws_cloudwatch_metric_alarm" "ec2_cpu" {
-  alarm_name          = "hello-bank-high-cpu"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 2
-  metric_name         = "CPUUtilization"
-  namespace           = "AWS/EC2"
-  period              = 120      # check every 2 minutes
-  statistic           = "Average"
-  threshold           = 80       # alert if CPU exceeds 80%
-  alarm_description   = "EC2 server is overloaded"
-}
-```
-
 View alarms in AWS Console → CloudWatch → Alarms.
 
 #### Datadog (Application Monitoring)
 
 Sign up for a free Datadog account at [datadoghq.com](https://www.datadoghq.com) (free tier available).
 
-```powershell
-helm repo add datadog https://helm.datadoghq.com
-helm install datadog datadog/datadog \
-  --namespace monitoring \
-  --create-namespace \
-  -f monitoring/datadog-values.yaml \
-  --set datadog.apiKey=YOUR_DATADOG_API_KEY
-```
 
 After ~2 minutes, open Datadog → Infrastructure → your cluster nodes appear. Go to APM → Traces to see individual API calls traced through the app.
 
