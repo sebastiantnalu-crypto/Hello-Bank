@@ -1,16 +1,20 @@
 stages:
   - test        # Run tests first
   - build       # Build Docker image
+  - infrastructure # Terraform
   - deploy      # Deploy to kubernetes
+  
 
 # Test stage (Python app)
 test-app:
   stage: test
   image: python:3.11-slim
   script:                  # This runs on every single push to the repository
-    - cd app         # ← move into app folder first
-    - pip install fastapi uvicorn pytest httpx
-    - pytest tests/test_main.py -v
+    - cd app         # 
+    # - pip install fastapi uvicorn pytest httpx 
+    - pip install --upgrade pip
+    - pip install -r requirements.txt
+    - pytest test_main.py -v
 
 # Build and push stage (Docker image)
 build-image:
@@ -23,12 +27,74 @@ build-image:
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA ./app
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
   only:
-    - main                 # Only build and push on the main branch
+    - main  
+    - setup-infra            # Added so you can build on your feature branch    
+
+# Terraform
+provision-infra:
+  stage: infrastructure
+  image: 
+    name: hashicorp/terraform:1.7.0
+    entrypoint: [""]
+  # variables:
+  #   # Pass AWS credentials to Terraform 
+  #   TF_VAR_s3_bucket_name: $TF_VAR_s3_bucket_name
+  #   AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+  #   AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+  #   AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+  #   TF_VAR_db_password: $TF_VAR_db_password
+  #   TF_VAR_project_name: $TF_VAR_project_name
+  script:
+    - apk add --no-cache aws-cli
+    - aws sts get-caller-identity
+    - cd terraform
+    - terraform init
+    - terraform plan
+    - terraform apply -auto-approve
+  only:
+    - main
+    - setup-infra   
+
+# # Terraform destroying
+# destroy-infra:
+#   stage: infrastructure
+#   image:
+#     name: hashicorp/terraform:1.15.2
+#     entrypoint: [""]
+
+#   # IMPORTANT: You must include these so Terraform can log into AWS to delete things!
+#   variables:
+#     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+#     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+#     AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+#     TF_VAR_db_password: $TF_VAR_db_password
+#     TF_VAR_project_name: $TF_VAR_project_name
+#     TF_VAR_s3_bucket_name: $TF_VAR_s3_bucket_name 
+
+#   script:
+#     # - apk add --no-cache aws-cli
+#     # - aws sts get-caller-identity
+#     - cd terraform
+#     - terraform init
+#     - terraform state list
+#     - terraform destroy -auto-approve 
+
+#   when: manual 
+#   only:
+#     - main
+#     - setup-infra
 
 # Deploy stage to Kubernetes
 deploy-staging:
   stage: deploy
-  image: alpine/helm:3.14.0
+  image: 
+    name: alpine/helm:3.14.0
+    entrypoint: [""] 
+  variables:
+    # This ensures the variable has a value if the GitLab setting fails
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION                  
   before_script:
     # Install AWS CLI inside the helm image to configure access
     - apk add --no-cache aws-cli
@@ -58,14 +124,21 @@ deploy-staging:
 
 deploy-monitoring:
   stage: deploy
-  image: alpine/helm:3.14.0
+  image:
+    name: alpine/helm:3.14.0
+    entrypoint: [""]              # REQUIRED FIX: Allows shell scripts
   script:
+    - apk add --no-cache aws-cli # Added this so AWS commands work here too
     - aws eks update-kubeconfig --name hello-bank-eks --region $AWS_DEFAULT_REGION
-    # Create the secret if it doesn't exist
+    - kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
     - kubectl create secret generic datadog-secret --from-literal=api-key=$DATADOG_API_KEY -n monitoring --dry-run=client -o yaml | kubectl apply -f -
-    # Install Datadog
     - helm repo add datadog https://helm.datadoghq.com
+    - helm repo update
     - helm upgrade --install datadog-agent datadog/datadog -f monitoring/datadog-values.yaml -n monitoring
+  only:
+    - main
+    - setup-infra
+  when: manual
 
 # GitLab will "mask" the password in the logs (it will show as [MASKED]) to protect your security.
 debug-registry:
@@ -74,3 +147,6 @@ debug-registry:
     - echo "The registry user is $CI_REGISTRY_USER"
 
     - echo "The registry URL is $CI_REGISTRY"
+
+
+ 
