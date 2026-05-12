@@ -1,0 +1,35 @@
+# Rate limiter — blocks clients that make too many requests
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit
+  namespace: hello-bank
+spec:
+  rateLimit:
+    average: 100    # 100 requests per second per client IP
+    burst: 50       # allow short bursts up to 50 extra
+
+---
+# Force all HTTP traffic to HTTPS
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-https
+  namespace: traefik
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+
+---
+# Strip /api prefix before sending to backend
+# e.g. /api/balance/ACC001 → /balance/ACC001
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-api-prefix
+  namespace: hello-bank
+spec:
+  stripPrefix:
+    prefixes:
+      - /api

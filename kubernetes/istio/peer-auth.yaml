@@ -1,0 +1,10 @@
+apiVersion: security.isto.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: hello-bank-mtls
+  namespace: hello-bank
+spec:
+  mtls:
+    mode: STRICT      # Every pod must use encrypted connections to talk to other pods
+    # mode: PERMISSIVE  # Pods can use encrypted or unencrypted connections to talk to other pods
+    # mode: DISABLE     # Pods can only use unencrypted connections to talk to other pods

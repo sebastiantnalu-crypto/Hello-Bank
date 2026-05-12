@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: hello-bank-app
+spec:
+    replicas: {{ .Values.replicaCount }}
+    selector:
+        matchLabels:
+            app: hello-bank
+    template: 
+        metadata:
+            labels:
+                app: hello-bank
+        spec:
+            imagePullSecrets:
+              - name: gitlab-registry-key
+            securityContext:
+                runAsNonRoot: true        # ← required by Kyverno policy
+                runAsUser: 1000
+            containers:
+                - name: hello-bank
+                  image: "{{ .Values.image.repository }}:{{ .Value.image.tag }}"
+                  env:
+                    - name: DB_PASSWORD
+                      valueFrom:
+                        secretKeyRef:
+                            name: rds-credentials
+                            key: password
+                - name: DB_HOST
+                  value: "{{ .Values.database.host }}" # You get this from Terraform Output
+                - name: DB_USER
+                  value: "bankadmin"
+                - name: DB_NAME
+                  value: "hellobank"
+                  ports:
+                    - containerPort: {{ .Values.service.port }}
+                # Health checks — K8s restarts pod if this fails
+                readinessProbe:
+                    httpGet:
+                        path: /
+                        port: 8080
+                    initialDelaySeconds: 5
+                    periodSeconds: 10
+                livenessProbe:
+                    httpGet:
+                      path: /
+                      port: 8080
+                    initialDelaySeconds: 15
+                    periodSeconds: 20
+                resources:
+                    requests:
+                        memory: "{{ .Values.resources.requests.memory | quote }}"
+                        cpu: "{{ .Values.resources.requests.cpu | quote }}"
+                    limits:
+                        memory: "{{ .Values.resources.limits.memory | quote }}"
+                        cpu: "{{ .Values.resources.limits.cpu | quote }}"

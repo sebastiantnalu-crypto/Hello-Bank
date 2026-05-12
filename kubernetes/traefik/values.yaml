@@ -1,0 +1,45 @@
+# Custom values for Traefik ingress controller
+# Install with:
+#   helm install traefik traefik/traefik -n traefik --create-namespace -f kubernetes/traefik/values.yaml
+
+deployment:
+  replicas: 2   # 2 copies so one can restart without downtime
+
+service:
+  type: LoadBalancer   # AWS will create an ELB automatically
+
+# Dashboard — lets you see all your routes in a browser UI
+ingressRoute:
+  dashboard:
+    enabled: true
+    # Visit: http://<traefik-lb-ip>/dashboard/
+    # WARNING: disable or password-protect this in production
+
+# Logging
+logs:
+  general:
+    level: INFO
+  access:
+    enabled: true   # logs every request — useful when debugging
+
+# Ports Traefik listens on
+ports:
+  web:
+    port: 8000
+    expose: true
+    exposedPort: 80      # external port 80 → internal 8000
+  websecure:
+    port: 8443
+    expose: true
+    exposedPort: 443     # external port 443 → internal 8443
+    tls:
+      enabled: true      # enables HTTPS termination
+
+# Resource limits — keeps Traefik from using too much on a small cluster
+resources:
+  requests:
+    cpu: "100m"
+    memory: "50Mi"
+  limits:
+    cpu: "300m"
+    memory: "150Mi"

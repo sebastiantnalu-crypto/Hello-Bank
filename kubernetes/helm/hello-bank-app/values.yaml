@@ -1,0 +1,17 @@
+replicaCount: 2
+
+image:
+  repository: registry.gitlab.com/sebastiant4/hello-bank
+  tag: "latest"     #In real projects, avoid latest (use tag: "1.0.0")
+  pullPolicy: Always       #Kubernetes always downloads the image before starting the container.
+
+service:
+  port: 8080
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "100m"
+  limits:
+    memory: "128Mi"
+    cpu: "200m"
