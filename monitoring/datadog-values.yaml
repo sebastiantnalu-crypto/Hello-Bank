@@ -1,0 +1,23 @@
+# Install Datadog agent on every Kubernetes node
+# Datadog Agent Configuration
+datadog:
+  # Leave apiKey empty here for security
+  apiKey: "YOUR_ACTUAL_API_KEY_HERE"
+  
+  # Reference the secret we will create manually or via CI/CD
+  apiKeyExistingSecret: datadog-secret
+
+  logs:
+    enabled: true       # Collects logs from all containers automatically
+
+  apm:
+    enabled: true       # Enables Distributed Tracing (Application Performance Monitoring)
+    portEnabled: true   # Allows your FastAPI app to send traces to the agent
+
+  # Kubernetes Cluster Metrics
+  kubeStateMetrics:     # <--- Fixed: Added the colon here
+    enabled: true       # Tracks pod status, deployments, and resource limits
+
+clusterAgent:
+  enabled: true         # Highly recommended for EKS to reduce load on the API server
+
