@@ -12,8 +12,8 @@
 # provider "aws" {}
 
 # provider "datadog" {
-#   api_key = "8855c7bdbd3793a72fee57b65738b824"
-#   app_key = "ddapp_RjhnbQZaPtIQoPq1JOJWqLJC1RPQ0Q58iU"
+#   api_key = "$DATADOG_API_KEY"
+#   app_key = "$DATADOG_APP_KEY"
 # }
 
 # data "aws_iam_policy_document" "datadog_aws_integration_assume_role" {
@@ -135,7 +135,7 @@
 # module "datadog_log_forwarder" {
 #   source  = "DataDog/log-lambda-forwarder-datadog/aws"
 
-#   dd_api_key = "8855c7bdbd3793a72fee57b65738b824"
+#   dd_api_key = "$DATADOG_API_KEY"
 #   dd_site    = "datadoghq.eu"
 
 #   tags = {
